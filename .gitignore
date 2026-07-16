@@ -1,0 +1,41 @@
+# ==========================
+# Archivos grandes de datos
+# ==========================
+*.parquet
+*.zip
+*.csv
+*.xlsx
+
+# No subir datos locales
+data/raw/*
+data/processed/*
+
+# Mantener carpetas vacías en GitHub
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# ==========================
+# Jupyter Notebook
+# ==========================
+.ipynb_checkpoints/
+
+# ==========================
+# Python
+# ==========================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# ==========================
+# Entornos virtuales
+# ==========================
+.venv/
+venv/
+env/
+
+# ==========================
+# Archivos del sistema
+# ==========================
+.DS_Store
+Thumbs.db
