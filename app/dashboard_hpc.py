@@ -1,4 +1,3 @@
-
 # ============================================================
 # DASHBOARD HPC - ENERGÍA, TEMPERATURA Y EFICIENCIA OPERATIVA
 # Proyecto: Visualización de datos para Data Center HPC
@@ -24,6 +23,10 @@ HARDWARE_COLORS = {
 }
 
 HARDWARE_ORDER = ["CPU-only", "GPU"]
+
+# Máximo de puntos para scatterplots.
+# Esto mejora el rendimiento visual al cambiar filtros.
+MAX_SCATTER_POINTS = 6000
 
 
 # ============================================================
@@ -837,11 +840,19 @@ def plot_hourly_profile(hourly_df):
     return fig
 
 
+# ============================================================
+# FUNCIONES OPTIMIZADAS PARA RELACIÓN ENTRE VARIABLES
+# ============================================================
+
 def plot_scatter_power_temp(scatter_df):
     plot_df = scatter_df.copy()
 
     if plot_df.empty:
         return None
+
+    # Optimización: reducir puntos para que el dashboard responda más rápido
+    if len(plot_df) > MAX_SCATTER_POINTS:
+        plot_df = plot_df.sample(MAX_SCATTER_POINTS, random_state=42)
 
     plot_df["duracion_visual"] = plot_df["job_duration_hours"].clip(
         lower=0.1,
@@ -857,6 +868,7 @@ def plot_scatter_power_temp(scatter_df):
         category_orders={"tipo_hardware": HARDWARE_ORDER},
         size="duracion_visual",
         symbol="state",
+        opacity=0.65,
         hover_data={
             "slurm_id": True,
             "node": True,
@@ -903,8 +915,9 @@ def plot_ram_relationship(detail_df):
     if ram_df.empty:
         return None
 
-    if len(ram_df) > 30000:
-        ram_df = ram_df.sample(30000, random_state=42)
+    # Optimización: reducir puntos para mejorar respuesta al cambiar filtros
+    if len(ram_df) > MAX_SCATTER_POINTS:
+        ram_df = ram_df.sample(MAX_SCATTER_POINTS, random_state=42)
 
     fig = make_subplots(
         rows=1,
@@ -1322,10 +1335,6 @@ with tab2:
         use_container_width=True
     )
 
-    # ========================================================
-    # PERFIL HORARIO DEL CLÚSTER
-    # ========================================================
-
     st.markdown("### Perfil horario de energía y temperatura")
 
     st.markdown(
@@ -1338,10 +1347,6 @@ with tab2:
         plot_hourly_profile(hourly_f),
         use_container_width=True
     )
-
-    # ========================================================
-    # HEATMAP DE PICOS TÉRMICOS POR NODO Y HORA
-    # ========================================================
 
     st.markdown("### Picos de temperatura por nodo y hora del día")
 
