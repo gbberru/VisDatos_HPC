@@ -1,7 +1,6 @@
 # ============================================================
 # DASHBOARD HPC - ENERGÍA, TEMPERATURA Y EFICIENCIA OPERATIVA
 # Proyecto: Visualización de datos para Data Center HPC
-# Autor: Gustavo Berrú Correa
 # ============================================================
 
 import streamlit as st
@@ -18,15 +17,14 @@ from plotly.subplots import make_subplots
 # ============================================================
 
 HARDWARE_COLORS = {
-    "CPU-only": "#1f77b4",  # Azul
-    "GPU": "#ff7f0e"        # Naranja
+    "CPU-only": "#1f77b4",
+    "GPU": "#ff7f0e"
 }
 
 HARDWARE_ORDER = ["CPU-only", "GPU"]
 
-# Máximo de puntos para scatterplots.
-# Esto mejora el rendimiento visual al cambiar filtros.
 MAX_SCATTER_POINTS = 6000
+CRITICAL_TEMP_C = 70
 
 
 # ============================================================
@@ -75,12 +73,10 @@ def load_data():
     scatter["start_date"] = pd.to_datetime(scatter["start_date"])
     scatter["end_date"] = pd.to_datetime(scatter["end_date"])
 
-    # Nombre visual para la interfaz
     hourly["rack"] = hourly["rack_inferred"].astype(str)
     detail["rack"] = detail["rack_inferred"].astype(str)
     scatter["rack"] = scatter["rack_inferred"].astype(str)
 
-    # Tipo de hardware
     hourly["tipo_hardware"] = np.where(hourly["gpu_node"] == 1, "GPU", "CPU-only")
     detail["tipo_hardware"] = np.where(detail["gpu_node"] == 1, "GPU", "CPU-only")
     scatter["tipo_hardware"] = np.where(scatter["gpu_node"] == 1, "GPU", "CPU-only")
@@ -121,7 +117,10 @@ else:
     end_date = pd.to_datetime(max_date) + pd.Timedelta(days=1)
 
 
-rack_options = sorted(hourly["rack"].dropna().unique())
+rack_options = sorted(
+    hourly["rack"].dropna().unique(),
+    key=lambda x: int("".join(filter(str.isdigit, str(x))) or 0)
+)
 
 selected_racks = st.sidebar.multiselect(
     "Rack",
@@ -160,7 +159,6 @@ selected_duration = st.sidebar.slider(
 )
 
 
-# Filtro dependiente Rack -> Nodo
 if selected_racks:
     node_options = sorted(
         hourly[hourly["rack"].isin(selected_racks)]["node"]
@@ -174,19 +172,6 @@ selected_nodes = st.sidebar.multiselect(
     "Nodo",
     options=node_options,
     default=node_options
-)
-
-st.sidebar.caption(
-    "Drill-down simple: primero selecciona uno o más racks; luego el filtro de nodo "
-    "queda limitado a los nodos de esos racks. La tabla final permite bajar al detalle "
-    "por job, nodo y estado."
-)
-
-st.sidebar.markdown("---")
-
-st.sidebar.info(
-    "Los datos del dashboard están agregados para mejorar el rendimiento y evitar "
-    "cargar el dataset original completo."
 )
 
 
@@ -298,7 +283,9 @@ def plot_time_series(hourly_df):
         .agg(
             energy_kwh=("energy_kwh", "sum"),
             cluster_power_kw=("power_mean_kw", "sum"),
-            temp_mean_c=("temp_mean_c", "mean")
+            temp_min_c=("temp_mean_c", "min"),
+            temp_mean_c=("temp_mean_c", "mean"),
+            temp_max_c=("temp_max_c", "max")
         )
     )
 
@@ -307,14 +294,22 @@ def plot_time_series(hourly_df):
         .agg(
             energy_kwh=("energy_kwh", "sum"),
             cluster_power_kw=("power_mean_kw", "sum"),
-            temp_mean_c=("temp_mean_c", "mean")
+            temp_min_c=("temp_mean_c", "min"),
+            temp_mean_c=("temp_mean_c", "mean"),
+            temp_max_c=("temp_max_c", "max")
         )
     )
 
     hw_wide = time_series_hw.pivot(
         index="hour",
         columns="tipo_hardware",
-        values=["energy_kwh", "cluster_power_kw", "temp_mean_c"]
+        values=[
+            "energy_kwh",
+            "cluster_power_kw",
+            "temp_min_c",
+            "temp_mean_c",
+            "temp_max_c"
+        ]
     )
 
     hw_wide.columns = [
@@ -335,8 +330,12 @@ def plot_time_series(hourly_df):
         "energy_kwh_GPU",
         "cluster_power_kw_CPU_only",
         "cluster_power_kw_GPU",
+        "temp_min_c_CPU_only",
+        "temp_min_c_GPU",
         "temp_mean_c_CPU_only",
-        "temp_mean_c_GPU"
+        "temp_mean_c_GPU",
+        "temp_max_c_CPU_only",
+        "temp_max_c_GPU"
     ]
 
     for col in required_cols:
@@ -355,10 +354,23 @@ def plot_time_series(hourly_df):
     time_series["power_gpu_txt"] = time_series["cluster_power_kw_GPU"].apply(
         lambda x: format_or_no_data(x, "kW")
     )
-    time_series["temp_cpu_txt"] = time_series["temp_mean_c_CPU_only"].apply(
+
+    time_series["temp_min_cpu_txt"] = time_series["temp_min_c_CPU_only"].apply(
         lambda x: format_or_no_data(x, "°C")
     )
-    time_series["temp_gpu_txt"] = time_series["temp_mean_c_GPU"].apply(
+    time_series["temp_min_gpu_txt"] = time_series["temp_min_c_GPU"].apply(
+        lambda x: format_or_no_data(x, "°C")
+    )
+    time_series["temp_mean_cpu_txt"] = time_series["temp_mean_c_CPU_only"].apply(
+        lambda x: format_or_no_data(x, "°C")
+    )
+    time_series["temp_mean_gpu_txt"] = time_series["temp_mean_c_GPU"].apply(
+        lambda x: format_or_no_data(x, "°C")
+    )
+    time_series["temp_max_cpu_txt"] = time_series["temp_max_c_CPU_only"].apply(
+        lambda x: format_or_no_data(x, "°C")
+    )
+    time_series["temp_max_gpu_txt"] = time_series["temp_max_c_GPU"].apply(
         lambda x: format_or_no_data(x, "°C")
     )
 
@@ -368,16 +380,19 @@ def plot_time_series(hourly_df):
             "energy_gpu_txt",
             "power_cpu_txt",
             "power_gpu_txt",
-            "temp_cpu_txt",
-            "temp_gpu_txt"
+            "temp_min_cpu_txt",
+            "temp_min_gpu_txt",
+            "temp_mean_cpu_txt",
+            "temp_mean_gpu_txt",
+            "temp_max_cpu_txt",
+            "temp_max_gpu_txt"
         ]
     ].to_numpy()
 
-    temp_min = time_series["temp_mean_c"].min()
-    temp_max = time_series["temp_mean_c"].max()
+    temp_values = time_series[["temp_min_c", "temp_mean_c", "temp_max_c"]].stack()
 
-    temp_axis_min = min(25, np.floor(temp_min / 5) * 5)
-    temp_axis_max = max(55, np.ceil(temp_max / 5) * 5)
+    temp_axis_min = min(20, np.floor(temp_values.min() / 5) * 5)
+    temp_axis_max = max(75, np.ceil(temp_values.max() / 5) * 5)
 
     fig = make_subplots(
         rows=2,
@@ -386,8 +401,8 @@ def plot_time_series(hourly_df):
         vertical_spacing=0.12,
         row_heights=[0.58, 0.42],
         subplot_titles=[
-            "Energía y potencia del clúster",
-            "Temperatura promedio del clúster"
+            "Energía y potencia",
+            "Temperatura del clúster"
         ],
         specs=[
             [{"secondary_y": True}],
@@ -400,13 +415,12 @@ def plot_time_series(hourly_df):
             x=time_series["hour"],
             y=time_series["energy_kwh"],
             mode="lines",
-            name="Energía estimada total (kWh)",
+            name="Energía (kWh)",
             line=dict(width=2, color="#2ca02c"),
             customdata=customdata,
             hovertemplate=(
-                "<b>Fecha:</b> %{x}<br>"
-                "<b>Energía total:</b> %{y:.2f} kWh<br><br>"
-                "<b>Detalle por hardware</b><br>"
+                "<b>Energía:</b> %{y:.2f} kWh<br>"
+                "<b>Detalle por hardware:</b><br>"
                 "CPU-only: %{customdata[0]}<br>"
                 "GPU: %{customdata[1]}"
                 "<extra></extra>"
@@ -422,13 +436,12 @@ def plot_time_series(hourly_df):
             x=time_series["hour"],
             y=time_series["cluster_power_kw"],
             mode="lines",
-            name="Potencia total del clúster (kW)",
+            name="Potencia (kW)",
             line=dict(width=2, color="#9467bd"),
             customdata=customdata,
             hovertemplate=(
-                "<b>Fecha:</b> %{x}<br>"
-                "<b>Potencia total:</b> %{y:.2f} kW<br><br>"
-                "<b>Detalle por hardware</b><br>"
+                "<b>Potencia:</b> %{y:.2f} kW<br>"
+                "<b>Detalle por hardware:</b><br>"
                 "CPU-only: %{customdata[2]}<br>"
                 "GPU: %{customdata[3]}"
                 "<extra></extra>"
@@ -442,15 +455,14 @@ def plot_time_series(hourly_df):
     fig.add_trace(
         go.Scatter(
             x=time_series["hour"],
-            y=time_series["temp_mean_c"],
+            y=time_series["temp_min_c"],
             mode="lines",
-            name="Temperatura promedio total (°C)",
-            line=dict(width=2, color="#d62728"),
+            name="Temperatura mínima (°C)",
+            line=dict(width=1.8, color="#1f77b4", dash="dot"),
             customdata=customdata,
             hovertemplate=(
-                "<b>Fecha:</b> %{x}<br>"
-                "<b>Temperatura promedio total:</b> %{y:.2f} °C<br><br>"
-                "<b>Detalle por hardware</b><br>"
+                "<b>Temperatura mínima:</b> %{y:.2f} °C<br>"
+                "<b>Detalle por hardware:</b><br>"
                 "CPU-only: %{customdata[4]}<br>"
                 "GPU: %{customdata[5]}"
                 "<extra></extra>"
@@ -460,22 +472,64 @@ def plot_time_series(hourly_df):
         col=1
     )
 
+    fig.add_trace(
+        go.Scatter(
+            x=time_series["hour"],
+            y=time_series["temp_max_c"],
+            mode="lines",
+            name="Temperatura máxima (°C)",
+            line=dict(width=1.8, color="#d62728"),
+            fill="tonexty",
+            fillcolor="rgba(214, 39, 40, 0.14)",
+            customdata=customdata,
+            hovertemplate=(
+                "<b>Temperatura máxima:</b> %{y:.2f} °C<br>"
+                "<b>Detalle por hardware:</b><br>"
+                "CPU-only: %{customdata[8]}<br>"
+                "GPU: %{customdata[9]}"
+                "<extra></extra>"
+            )
+        ),
+        row=2,
+        col=1
+    )
+
+    fig.add_trace(
+        go.Scatter(
+            x=time_series["hour"],
+            y=time_series["temp_mean_c"],
+            mode="lines",
+            name="Temperatura promedio (°C)",
+            line=dict(width=2.2, color="#ff7f0e"),
+            customdata=customdata,
+            hovertemplate=(
+                "<b>Temperatura promedio:</b> %{y:.2f} °C<br>"
+                "<b>Detalle por hardware:</b><br>"
+                "CPU-only: %{customdata[6]}<br>"
+                "GPU: %{customdata[7]}"
+                "<extra></extra>"
+            )
+        ),
+        row=2,
+        col=1
+    )
+
     fig.update_yaxes(
-        title_text="Energía estimada (kWh)",
+        title_text="Energía (kWh)",
         row=1,
         col=1,
         secondary_y=False
     )
 
     fig.update_yaxes(
-        title_text="Potencia total del clúster (kW)",
+        title_text="Potencia (kW)",
         row=1,
         col=1,
         secondary_y=True
     )
 
     fig.update_yaxes(
-        title_text="Temperatura promedio (°C)",
+        title_text="Temperatura (°C)",
         range=[temp_axis_min, temp_axis_max],
         tick0=0,
         dtick=5,
@@ -494,7 +548,7 @@ def plot_time_series(hourly_df):
     fig.update_layout(
         title="Evolución temporal de energía, potencia y temperatura",
         hovermode="x unified",
-        height=720,
+        height=760,
         margin=dict(l=60, r=60, t=110, b=60),
         legend=dict(
             orientation="h",
@@ -644,11 +698,11 @@ def plot_ranking(hourly_df, metric_col, metric_label, group_col, node_ranking_mo
             "node": "Nodo",
             "rack": "Rack",
             "tipo_hardware": "Tipo de hardware",
-            "energy_kwh": "Energía estimada (kWh)",
-            "power_mean_kw": "Potencia promedio (kW)",
+            "energy_kwh": "Energía (kWh)",
+            "power_mean_kw": "Potencia (kW)",
             "temp_mean_c": "Temperatura promedio (°C)",
             "temp_max_c": "Temperatura máxima (°C)",
-            "co2_kg": "CO₂ estimado (kg)",
+            "co2_kg": "CO₂ (kg)",
             "records": "Registros"
         },
         category_orders={
@@ -676,6 +730,13 @@ def plot_ranking(hourly_df, metric_col, metric_label, group_col, node_ranking_mo
     return fig
 
 
+# ============================================================
+# FUNCIÓN MODIFICADA:
+# HEATMAP RACK/HORA ORDENADO POR CONSUMO O MÉTRICA SELECCIONADA
+# Arriba = racks con mayor valor de la métrica seleccionada
+# Abajo = racks con menor valor
+# ============================================================
+
 def plot_heatmap(hourly_df, metric_col, metric_label):
     heatmap_data = hourly_df.copy()
     heatmap_data["hour_of_day"] = heatmap_data["hour"].dt.hour
@@ -691,10 +752,40 @@ def plot_heatmap(hourly_df, metric_col, metric_label):
         index="rack",
         columns="hour_of_day",
         values="value"
-    ).fillna(0)
+    )
 
-    heatmap_matrix = heatmap_matrix.sort_index()
-    heatmap_matrix = heatmap_matrix.reindex(columns=range(24), fill_value=0)
+    heatmap_matrix = heatmap_matrix.reindex(columns=range(24))
+
+    if metric_col in ["energy_kwh", "co2_kg"]:
+        heatmap_matrix = heatmap_matrix.fillna(0)
+
+    # Orden del eje Y según la métrica seleccionada.
+    # Para energía y CO2 se ordena por suma.
+    # Para temperatura máxima se ordena por máximo.
+    # Para potencia y temperatura promedio se ordena por promedio.
+    if metric_col in ["energy_kwh", "co2_kg"]:
+        rack_order = (
+            heatmap_matrix.sum(axis=1)
+            .sort_values(ascending=False)
+            .index
+            .tolist()
+        )
+    elif metric_col == "temp_max_c":
+        rack_order = (
+            heatmap_matrix.max(axis=1)
+            .sort_values(ascending=False)
+            .index
+            .tolist()
+        )
+    else:
+        rack_order = (
+            heatmap_matrix.mean(axis=1)
+            .sort_values(ascending=False)
+            .index
+            .tolist()
+        )
+
+    heatmap_matrix = heatmap_matrix.reindex(index=rack_order)
 
     fig = px.imshow(
         heatmap_matrix,
@@ -758,7 +849,7 @@ def plot_hourly_profile(hourly_df):
         go.Bar(
             x=hourly_profile["hour_label"],
             y=hourly_profile["energy_kwh"],
-            name="Energía estimada (kWh)",
+            name="Energía (kWh)",
             marker_color="#2ca02c",
             opacity=0.75,
             hovertemplate=(
@@ -828,7 +919,7 @@ def plot_hourly_profile(hourly_df):
     )
 
     fig.update_yaxes(
-        title_text="Energía estimada (kWh)",
+        title_text="Energía (kWh)",
         secondary_y=False
     )
 
@@ -840,17 +931,12 @@ def plot_hourly_profile(hourly_df):
     return fig
 
 
-# ============================================================
-# FUNCIONES OPTIMIZADAS PARA RELACIÓN ENTRE VARIABLES
-# ============================================================
-
 def plot_scatter_power_temp(scatter_df):
     plot_df = scatter_df.copy()
 
     if plot_df.empty:
         return None
 
-    # Optimización: reducir puntos para que el dashboard responda más rápido
     if len(plot_df) > MAX_SCATTER_POINTS:
         plot_df = plot_df.sample(MAX_SCATTER_POINTS, random_state=42)
 
@@ -888,7 +974,7 @@ def plot_scatter_power_temp(scatter_df):
         },
         title="Relación entre potencia consumida y temperatura por nodo",
         labels={
-            "power_mean_kw": "Potencia promedio (kW)",
+            "power_mean_kw": "Potencia (kW)",
             "temp_mean_c": "Temperatura promedio (°C)",
             "tipo_hardware": "Tipo de hardware",
             "state": "Estado del job",
@@ -915,7 +1001,6 @@ def plot_ram_relationship(detail_df):
     if ram_df.empty:
         return None
 
-    # Optimización: reducir puntos para mejorar respuesta al cambiar filtros
     if len(ram_df) > MAX_SCATTER_POINTS:
         ram_df = ram_df.sample(MAX_SCATTER_POINTS, random_state=42)
 
@@ -924,7 +1009,7 @@ def plot_ram_relationship(detail_df):
         cols=2,
         subplot_titles=[
             "RAM activa vs temperatura promedio",
-            "RAM activa vs energía estimada"
+            "RAM activa vs energía"
         ],
         horizontal_spacing=0.12
     )
@@ -1026,7 +1111,7 @@ def plot_ram_relationship(detail_df):
     fig.update_yaxes(title_text="Temperatura promedio (°C)", row=1, col=1)
 
     fig.update_xaxes(title_text="RAM activa promedio (GB)", row=1, col=2)
-    fig.update_yaxes(title_text="Energía estimada (kWh)", row=1, col=2)
+    fig.update_yaxes(title_text="Energía (kWh)", row=1, col=2)
 
     return fig
 
@@ -1047,7 +1132,7 @@ def plot_state_energy(detail_df):
         title="Consumo energético por estado de job",
         labels={
             "state": "Estado del job",
-            "energy_kwh": "Energía estimada (kWh)",
+            "energy_kwh": "Energía (kWh)",
             "tipo_hardware": "Tipo de hardware"
         }
     )
@@ -1081,96 +1166,124 @@ def plot_node_hour_temperature_peaks(hourly_df, top_nodes=25):
         )
     )
 
-    top_node_list = (
+    node_stats = (
         node_hour_temp
-        .groupby("node", as_index=False)
-        .agg(temp_max_c=("temp_max_c", "max"))
-        .sort_values("temp_max_c", ascending=False)
-        .head(top_nodes)["node"]
-        .tolist()
+        .groupby(["node", "rack", "tipo_hardware"], as_index=False)
+        .agg(
+            temp_max_global=("temp_max_c", "max"),
+            temp_mean_global=("temp_mean_c", "mean"),
+            energy_total_kwh=("energy_kwh", "sum"),
+            power_mean_kw=("power_mean_kw", "mean"),
+            records=("records", "sum")
+        )
+        .sort_values(
+            ["temp_max_global", "temp_mean_global", "energy_total_kwh", "node"],
+            ascending=[False, False, False, True]
+        )
+        .head(top_nodes)
     )
 
-    node_hour_top = node_hour_temp[node_hour_temp["node"].isin(top_node_list)].copy()
-
-    node_order = (
-        node_hour_top
-        .groupby("node")["temp_max_c"]
-        .max()
-        .sort_values(ascending=False)
-        .index
-        .tolist()
+    node_stats["node_label"] = (
+        node_stats["node"].astype(str)
+        + " | máx. "
+        + node_stats["temp_max_global"].round(1).astype(str)
+        + " °C"
     )
+
+    node_hour_top = node_hour_temp.merge(
+        node_stats[["node", "temp_max_global", "temp_mean_global", "node_label"]],
+        on="node",
+        how="inner"
+    )
+
+    display_order = (
+        node_stats
+        .sort_values(
+            ["temp_max_global", "temp_mean_global", "energy_total_kwh", "node"],
+            ascending=[True, True, True, False]
+        )
+    )
+
+    node_order = display_order["node_label"].tolist()
 
     temp_matrix = node_hour_top.pivot(
-        index="node",
+        index="node_label",
         columns="hour_of_day",
         values="temp_max_c"
-    ).reindex(node_order)
+    )
 
+    temp_matrix = temp_matrix.reindex(index=node_order)
     temp_matrix = temp_matrix.reindex(columns=range(24))
 
-    q1 = node_hour_top["temp_max_c"].quantile(0.25)
-    q3 = node_hour_top["temp_max_c"].quantile(0.75)
-    iqr = q3 - q1
+    if np.isnan(temp_matrix.values).all():
+        return None
 
-    threshold_iqr = q3 + 1.5 * iqr
-    threshold_min = 60
-    threshold = max(threshold_iqr, threshold_min)
+    temp_min_visual = np.nanmin(temp_matrix.values)
+    temp_matrix_visual = temp_matrix.fillna(temp_min_visual)
 
-    outliers = node_hour_top[node_hour_top["temp_max_c"] >= threshold].copy()
+    critical_points = node_hour_top[
+        node_hour_top["temp_max_c"] >= CRITICAL_TEMP_C
+    ].copy()
 
     fig = go.Figure()
 
     fig.add_trace(
         go.Heatmap(
-            z=temp_matrix.values,
-            x=temp_matrix.columns,
-            y=temp_matrix.index,
+            z=temp_matrix_visual.values,
+            x=temp_matrix_visual.columns,
+            y=temp_matrix_visual.index,
             colorscale="Inferno",
             colorbar=dict(title="Temp. máx. °C"),
             hovertemplate=(
                 "Nodo: %{y}<br>"
                 "Hora del día: %{x}:00<br>"
-                "Temp. máxima: %{z:.2f} °C"
+                "Temp. máxima registrada: %{z:.2f} °C"
                 "<extra></extra>"
             )
         )
     )
 
-    if not outliers.empty:
+    if not critical_points.empty:
+        critical_points["node_label"] = (
+            critical_points["node"].map(
+                node_stats.set_index("node")["node_label"]
+            )
+        )
+
         fig.add_trace(
             go.Scatter(
-                x=outliers["hour_of_day"],
-                y=outliers["node"],
+                x=critical_points["hour_of_day"],
+                y=critical_points["node_label"],
                 mode="markers",
-                name="Pico térmico",
+                name=f"Temperatura crítica ≥ {CRITICAL_TEMP_C} °C",
                 marker=dict(
-                    size=np.clip(outliers["temp_max_c"] / 2, 8, 22),
+                    size=16,
                     color="rgba(0,0,0,0)",
-                    line=dict(color="#00FFFF", width=2),
+                    line=dict(color="#00FFFF", width=2.5),
                     symbol="circle"
                 ),
                 customdata=np.stack(
                     [
-                        outliers["rack"],
-                        outliers["tipo_hardware"],
-                        outliers["temp_max_c"],
-                        outliers["temp_mean_c"],
-                        outliers["power_mean_kw"],
-                        outliers["energy_kwh"]
+                        critical_points["node"],
+                        critical_points["rack"],
+                        critical_points["tipo_hardware"],
+                        critical_points["temp_max_c"],
+                        critical_points["temp_mean_c"],
+                        critical_points["power_mean_kw"],
+                        critical_points["energy_kwh"]
                     ],
                     axis=-1
                 ),
                 hovertemplate=(
-                    "<b>Pico térmico</b><br>"
-                    "Nodo: %{y}<br>"
+                    "<b>Temperatura crítica</b><br>"
+                    "Nodo: %{customdata[0]}<br>"
                     "Hora: %{x}:00<br>"
-                    "Rack: %{customdata[0]}<br>"
-                    "Tipo hardware: %{customdata[1]}<br>"
-                    "Temp. máxima: %{customdata[2]:.2f} °C<br>"
-                    "Temp. promedio: %{customdata[3]:.2f} °C<br>"
-                    "Potencia: %{customdata[4]:.3f} kW<br>"
-                    "Energía: %{customdata[5]:.2f} kWh"
+                    "Rack: %{customdata[1]}<br>"
+                    "Tipo hardware: %{customdata[2]}<br>"
+                    "Temp. máxima registrada: %{customdata[3]:.2f} °C<br>"
+                    "Temp. promedio: %{customdata[4]:.2f} °C<br>"
+                    "Potencia: %{customdata[5]:.3f} kW<br>"
+                    "Energía: %{customdata[6]:.2f} kWh"
                     "<extra></extra>"
                 )
             )
@@ -1178,14 +1291,22 @@ def plot_node_hour_temperature_peaks(hourly_df, top_nodes=25):
 
     fig.update_layout(
         title=(
-            "Picos de temperatura por nodo y hora del día<br>"
-            "<sup>Color = temperatura máxima | Círculos = picos térmicos o valores atípicos</sup>"
+            "Top nodos por temperatura máxima registrada<br>"
+            f"<sup>Arriba = mayor criticidad térmica | "
+            f"Círculos = temperatura crítica ≥ {CRITICAL_TEMP_C} °C</sup>"
         ),
         xaxis_title="Hora del día",
-        yaxis_title="Nodo",
-        height=780,
+        yaxis_title="Nodo | temperatura máxima global",
+        height=820,
         margin=dict(l=40, r=40, t=100, b=40),
-        hovermode="closest"
+        hovermode="closest",
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        )
     )
 
     fig.update_xaxes(
@@ -1212,10 +1333,10 @@ def plot_node_hour_temperature_peaks(hourly_df, top_nodes=25):
 
 kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
 
-kpi1.metric("Energía total", f"{energia_total_mwh:,.2f} MWh")
+kpi1.metric("Energía", f"{energia_total_mwh:,.2f} MWh")
 kpi2.metric("Potencia prom. clúster", f"{potencia_promedio_cluster_kw:,.2f} kW")
 kpi3.metric("Temp. promedio", f"{temperatura_promedio_cluster:,.2f} °C")
-kpi4.metric("CO₂ estimado", f"{co2_total_ton:,.2f} t")
+kpi4.metric("CO₂", f"{co2_total_ton:,.2f} t")
 kpi5.metric("Jobs críticos", f"{jobs_criticos:,}")
 
 
@@ -1232,11 +1353,11 @@ tab1, tab2, tab3, tab4 = st.tabs([
 
 
 metric_options = {
-    "Energía estimada (kWh)": "energy_kwh",
-    "Potencia promedio (kW)": "power_mean_kw",
+    "Energía (kWh)": "energy_kwh",
+    "Potencia (kW)": "power_mean_kw",
     "Temperatura promedio (°C)": "temp_mean_c",
     "Temperatura máxima (°C)": "temp_max_c",
-    "CO₂ estimado (kg)": "co2_kg"
+    "CO₂ (kg)": "co2_kg"
 }
 
 
@@ -1323,7 +1444,7 @@ with tab2:
     heatmap_metric_label = st.selectbox(
         "Métrica para heatmap Rack/Hora",
         options=list(metric_options.keys()),
-        index=3
+        index=0
     )
 
     st.plotly_chart(
@@ -1348,16 +1469,17 @@ with tab2:
         use_container_width=True
     )
 
-    st.markdown("### Picos de temperatura por nodo y hora del día")
+    st.markdown("### Top nodos por temperatura máxima registrada")
 
     st.markdown(
-        "Este gráfico permite identificar nodos específicos con picos térmicos. "
-        "El eje X representa la hora del día, el eje Y representa el nodo y el color "
-        "representa la temperatura máxima registrada."
+        "Este gráfico permite identificar los nodos con mayor criticidad térmica. "
+        "Cada fila representa un nodo y cada columna una hora del día. "
+        f"El color representa la temperatura máxima registrada y los círculos resaltan "
+        f"temperaturas críticas iguales o superiores a {CRITICAL_TEMP_C} °C."
     )
 
     top_nodes_temp = st.slider(
-        "Cantidad de nodos a mostrar en el heatmap térmico",
+        "Cantidad de nodos más calientes a mostrar",
         min_value=10,
         max_value=40,
         value=25,
@@ -1458,7 +1580,7 @@ with tab4:
         "gpu_count": "Cantidad GPU",
         "state": "Estado",
         "job_duration_hours": "Duración job (h)",
-        "power_mean_kw": "Potencia prom. (kW)",
+        "power_mean_kw": "Potencia (kW)",
         "energy_kwh": "Energía (kWh)",
         "temp_mean_c": "Temp. prom. (°C)",
         "temp_max_c": "Temp. máx. (°C)",
