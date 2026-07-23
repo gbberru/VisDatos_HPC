@@ -731,7 +731,6 @@ def plot_ranking(hourly_df, metric_col, metric_label, group_col, node_ranking_mo
 
 
 # ============================================================
-# FUNCIÓN MODIFICADA:
 # HEATMAP RACK/HORA ORDENADO POR CONSUMO O MÉTRICA SELECCIONADA
 # Arriba = racks con mayor valor de la métrica seleccionada
 # Abajo = racks con menor valor
@@ -1502,9 +1501,8 @@ with tab1:
     st.subheader("Vista general del clúster")
 
     st.markdown(
-        "Esta sección resume el comportamiento general del clúster. "
-        "La serie temporal permite observar tendencias, variaciones y picos. "
-        "El control inferior de la gráfica funciona como **range slider temporal**."
+        "Resumen general del consumo, potencia y temperatura del clúster. "
+        "Use el **range slider** para explorar periodos específicos."
     )
 
     st.plotly_chart(
@@ -1570,8 +1568,7 @@ with tab2:
     st.subheader("Patrones por rack, nodo y hora del día")
 
     st.markdown(
-        "Esta sección permite identificar horarios, racks y nodos con mayor consumo "
-        "o temperatura elevada. El selector de métrica permite cambiar el enfoque del análisis."
+        "Identifica racks, nodos y horarios críticos según la métrica seleccionada."
     )
 
     heatmap_metric_label = st.selectbox(
@@ -1592,9 +1589,7 @@ with tab2:
     st.markdown("### Perfil horario de energía y temperatura")
 
     st.markdown(
-        "Este gráfico resume el comportamiento del clúster por hora del día. "
-        "Permite identificar horarios donde coinciden mayor consumo energético, "
-        "temperatura promedio elevada o picos de temperatura máxima."
+        "Muestra en qué horas del día se concentran energía y picos térmicos."
     )
 
     st.plotly_chart(
@@ -1605,10 +1600,8 @@ with tab2:
     st.markdown("### Top nodos por temperatura máxima registrada")
 
     st.markdown(
-        "Este gráfico permite identificar los nodos con mayor criticidad térmica. "
-        "Cada fila representa un nodo y cada columna una hora del día. "
-        f"El color representa la temperatura máxima registrada y los círculos resaltan "
-        f"temperaturas críticas iguales o superiores a {CRITICAL_TEMP_C} °C."
+        f"Localiza nodos con mayor temperatura máxima y horarios críticos "
+        f"iguales o superiores a {CRITICAL_TEMP_C} °C."
     )
 
     top_nodes_temp = st.slider(
@@ -1638,8 +1631,7 @@ with tab3:
     st.subheader("Relaciones multivariables")
 
     st.markdown(
-        "Esta sección permite explorar asociaciones entre potencia, temperatura, RAM, energía "
-        "y tipo de hardware. Los tooltips muestran detalle bajo demanda por job, nodo y rack."
+        "Explora relaciones entre potencia, temperatura, RAM y energía por tipo de hardware."
     )
 
     fig_scatter = plot_scatter_power_temp(scatter_f)
@@ -1665,8 +1657,7 @@ with tab4:
     st.subheader("Detalle operativo por job, nodo y estado")
 
     st.markdown(
-        "Esta sección permite revisar estados de job, consumo asociado y registros específicos. "
-        "Funciona como nivel final del drill-down: de rack a nodo y de nodo a job."
+        "Revisa consumo, estados de job y registros específicos para el análisis operativo."
     )
 
     st.plotly_chart(
@@ -1677,9 +1668,7 @@ with tab4:
     st.markdown("### Flujo de energía por resultado operativo")
 
     st.markdown(
-        "El diagrama Sankey muestra cómo se distribuye la energía desde el tipo de hardware "
-        "hacia el estado del job y finalmente hacia una clasificación operativa: "
-        "trabajo útil o energía no productiva."
+        "Muestra el flujo de energía desde el tipo de hardware hasta el resultado operativo."
     )
 
     fig_sankey = plot_energy_sankey(detail_f)
