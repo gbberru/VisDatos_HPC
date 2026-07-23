@@ -1146,6 +1146,139 @@ def plot_state_energy(detail_df):
     return fig
 
 
+def plot_energy_sankey(detail_df):
+    sankey_df = detail_df.copy()
+
+    if sankey_df.empty:
+        return None
+
+    sankey_df["clasificacion_operativa"] = np.where(
+        sankey_df["state"] == "COMPLETED",
+        "Trabajo útil",
+        "Energía no productiva"
+    )
+
+    sankey_energy = (
+        sankey_df
+        .groupby(["tipo_hardware", "state", "clasificacion_operativa"], as_index=False)
+        .agg(energy_kwh=("energy_kwh", "sum"))
+    )
+
+    sankey_energy = sankey_energy[sankey_energy["energy_kwh"] > 0].copy()
+
+    if sankey_energy.empty:
+        return None
+
+    hardware_nodes = [
+        hw for hw in HARDWARE_ORDER
+        if hw in sankey_energy["tipo_hardware"].unique()
+    ]
+
+    state_nodes = sorted(sankey_energy["state"].dropna().unique().tolist())
+
+    classification_nodes = [
+        label for label in ["Trabajo útil", "Energía no productiva"]
+        if label in sankey_energy["clasificacion_operativa"].unique()
+    ]
+
+    labels = hardware_nodes + state_nodes + classification_nodes
+    node_index = {label: i for i, label in enumerate(labels)}
+
+    sources = []
+    targets = []
+    values = []
+    link_labels = []
+    link_colors = []
+
+    # Flujo 1: Tipo de hardware -> Estado del job
+    hw_state = (
+        sankey_energy
+        .groupby(["tipo_hardware", "state"], as_index=False)
+        .agg(energy_kwh=("energy_kwh", "sum"))
+    )
+
+    for _, row in hw_state.iterrows():
+        sources.append(node_index[row["tipo_hardware"]])
+        targets.append(node_index[row["state"]])
+        values.append(row["energy_kwh"])
+        link_labels.append(
+            f"{row['tipo_hardware']} → {row['state']}: {row['energy_kwh']:.2f} kWh"
+        )
+
+        if row["tipo_hardware"] == "GPU":
+            link_colors.append("rgba(255, 127, 14, 0.35)")
+        else:
+            link_colors.append("rgba(31, 119, 180, 0.35)")
+
+    # Flujo 2: Estado del job -> Clasificación operativa
+    state_class = (
+        sankey_energy
+        .groupby(["state", "clasificacion_operativa"], as_index=False)
+        .agg(energy_kwh=("energy_kwh", "sum"))
+    )
+
+    for _, row in state_class.iterrows():
+        sources.append(node_index[row["state"]])
+        targets.append(node_index[row["clasificacion_operativa"]])
+        values.append(row["energy_kwh"])
+        link_labels.append(
+            f"{row['state']} → {row['clasificacion_operativa']}: {row['energy_kwh']:.2f} kWh"
+        )
+
+        if row["clasificacion_operativa"] == "Trabajo útil":
+            link_colors.append("rgba(44, 160, 44, 0.35)")
+        else:
+            link_colors.append("rgba(214, 39, 40, 0.30)")
+
+    node_colors = []
+    for label in labels:
+        if label == "CPU-only":
+            node_colors.append(HARDWARE_COLORS["CPU-only"])
+        elif label == "GPU":
+            node_colors.append(HARDWARE_COLORS["GPU"])
+        elif label == "Trabajo útil":
+            node_colors.append("#2ca02c")
+        elif label == "Energía no productiva":
+            node_colors.append("#d62728")
+        else:
+            node_colors.append("#7f7f7f")
+
+    fig = go.Figure(
+        data=[
+            go.Sankey(
+                arrangement="snap",
+                node=dict(
+                    pad=18,
+                    thickness=18,
+                    line=dict(color="rgba(0,0,0,0.25)", width=0.5),
+                    label=labels,
+                    color=node_colors
+                ),
+                link=dict(
+                    source=sources,
+                    target=targets,
+                    value=values,
+                    color=link_colors,
+                    customdata=link_labels,
+                    hovertemplate="%{customdata}<extra></extra>"
+                )
+            )
+        ]
+    )
+
+    fig.update_layout(
+        title=(
+            "Flujo de energía por tipo de hardware, estado del job y clasificación operativa<br>"
+            "<sup>Valor del flujo = energía acumulada (kWh)</sup>"
+        ),
+        height=560,
+        margin=dict(l=40, r=40, t=90, b=40),
+        font=dict(size=12)
+    )
+
+    return fig
+
+
 def plot_node_hour_temperature_peaks(hourly_df, top_nodes=25):
     node_temp = hourly_df.copy()
 
@@ -1540,6 +1673,21 @@ with tab4:
         plot_state_energy(detail_f),
         use_container_width=True
     )
+
+    st.markdown("### Flujo de energía por resultado operativo")
+
+    st.markdown(
+        "El diagrama Sankey muestra cómo se distribuye la energía desde el tipo de hardware "
+        "hacia el estado del job y finalmente hacia una clasificación operativa: "
+        "trabajo útil o energía no productiva."
+    )
+
+    fig_sankey = plot_energy_sankey(detail_f)
+
+    if fig_sankey is not None:
+        st.plotly_chart(fig_sankey, use_container_width=True)
+    else:
+        st.warning("No hay datos suficientes para generar el diagrama Sankey.")
 
     st.markdown("### Tabla de detalle filtrada")
 
