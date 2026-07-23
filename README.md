@@ -13,6 +13,7 @@ El dashboard permite responder preguntas como:
 - ¿Qué horarios presentan patrones recurrentes de consumo o picos térmicos?
 - ¿Qué relación existe entre potencia, temperatura, RAM y energía?
 - ¿Qué estados de job concentran energía productiva o potencialmente no productiva?
+- ¿Qué jobs, nodos o racks requieren una revisión operativa más detallada?
 
 ---
 
@@ -44,7 +45,7 @@ VisDatos_HPC/
 │
 ├── data/
 │   ├── raw/
-│   │   └── datacenter_enriched_core_single.parquet  # Dataset base procesado / o archivo generado localmente
+│   │   └── datacenter_enriched_core_single.parquet
 │   │
 │   └── processed/
 │       ├── heatmap_rack_hour.parquet
@@ -65,7 +66,7 @@ VisDatos_HPC/
 └── requirements.txt
 ```
 
-### Descripción de carpetas
+### Descripción de carpetas y archivos
 
 | Carpeta / archivo | Descripción |
 |---|---|
@@ -125,35 +126,65 @@ Para que el dashboard funcione de forma fluida, se generaron archivos agregados 
 
 ---
 
-## 7. Columnas principales del dataset final
+## 7. Diccionario de datos del dataset final
+
+El dataset final contiene 53 columnas. A continuación se presenta el diccionario completo de variables utilizadas o conservadas durante el proceso de análisis.
 
 | Columna | Significado | Unidad / tipo |
 |---|---|---|
+| `prom_id` | Identificador del registro de monitoreo. | ID |
 | `timestamp` | Fecha y hora de la medición. | Fecha/hora |
+| `timestamp_seconds` | Fecha y hora representada en segundos Unix. | Segundos |
+| `timestamp_seconds_delta` | Diferencia de tiempo entre mediciones consecutivas. | Segundos |
 | `node` | Nombre del nodo físico del clúster. | Categórico |
 | `rack_inferred` | Rack inferido a partir del nombre del nodo. | Categórico |
+| `node_position_inferred` | Posición inferida del nodo dentro del rack. | Categórico |
 | `gpu_node` | Indica si el nodo tiene GPU. | 0 = No, 1 = Sí |
 | `gpu_model` | Modelo de GPU del nodo. | Categórico |
-| `gpu_count` | Cantidad de GPU disponibles en el nodo. | Número |
-| `node_power_usage` | Potencia registrada del nodo. | Watts |
+| `gpu_count` | Cantidad de GPU disponibles en el nodo. | Número de GPU |
+| `cpu_tdp_total` | TDP total estimado de CPU del nodo. | Watts |
+| `gpu_tdp_total` | TDP total estimado de GPU del nodo. | Watts |
+| `node_load1` | Carga promedio del nodo en el último minuto. | Índice de carga |
+| `node_load5` | Carga promedio del nodo en los últimos 5 minutos. | Índice de carga |
+| `node_load15` | Carga promedio del nodo en los últimos 15 minutos. | Índice de carga |
+| `node_load1_per_core` | Carga del nodo ajustada por número de cores. | Índice de carga por core |
+| `node_power_usage` | Potencia instantánea consumida por el nodo. | Watts |
 | `node_rapl_package_power_sum` | Potencia estimada del paquete CPU mediante RAPL. | Watts |
+| `node_rapl_package_joules_total_sum_delta` | Energía CPU consumida entre mediciones. | Joules |
 | `cpu_package_energy_kwh` | Energía CPU convertida a kWh. | kWh |
+| `node_memory_Active_bytes` | Memoria RAM activa del nodo. | Bytes |
+| `node_memory_MemFree_bytes` | Memoria RAM libre del nodo. | Bytes |
 | `ram_active_gb` | Memoria RAM activa convertida a GB. | GB |
 | `ram_free_gb` | Memoria RAM libre convertida a GB. | GB |
 | `node_hwmon_temp_celsius_mean` | Temperatura promedio de sensores hardware del nodo. | °C |
 | `node_hwmon_temp_celsius_max` | Temperatura máxima de sensores hardware del nodo. | °C |
+| `node_thermal_zone_temp_mean` | Temperatura promedio de zonas térmicas del nodo. | °C |
+| `node_thermal_zone_temp_max` | Temperatura máxima de zonas térmicas del nodo. | °C |
+| `nvidia_gpu_memory_used_bytes_sum` | Memoria GPU utilizada. | Bytes |
 | `gpu_memory_used_gb` | Memoria GPU utilizada convertida a GB. | GB |
+| `nvidia_gpu_temperature_celsius_mean` | Temperatura promedio de GPU NVIDIA. | °C |
+| `nvidia_gpu_temperature_celsius_max` | Temperatura máxima de GPU NVIDIA. | °C |
+| `nvidia_gpu_power_usage_milliwatts_mean` | Potencia promedio de GPU NVIDIA. | Miliwatts |
 | `gpu_power_watts_mean` | Potencia promedio de GPU convertida a watts. | Watts |
 | `gpu_power_watts_max` | Potencia máxima de GPU convertida a watts. | Watts |
+| `nvidia_gpu_duty_cycle_mean` | Uso promedio de la GPU. | Porcentaje (%) |
+| `nvidia_gpu_duty_cycle_max` | Uso máximo de la GPU. | Porcentaje (%) |
+| `node_disk_read_bytes_total_sum_delta` | Bytes leídos desde disco entre mediciones. | Bytes |
+| `node_disk_written_bytes_total_sum_delta` | Bytes escritos en disco entre mediciones. | Bytes |
+| `node_network_receive_bytes_total_sum_delta` | Bytes recibidos por red entre mediciones. | Bytes |
+| `node_network_transmit_bytes_total_sum_delta` | Bytes transmitidos por red entre mediciones. | Bytes |
+| `node_energy_kwh_est` | Energía estimada consumida por el nodo. | kWh |
 | `gpu_energy_kwh_est` | Energía estimada consumida por GPU. | kWh |
-| `co2_kg_est` | Emisiones estimadas de CO₂ calculadas desde la energía. | kg CO₂ |
+| `co2_kg_est` | Emisiones estimadas de CO₂ calculadas desde la energía estimada. | kg CO₂ estimado |
 | `slurm_id` | Identificador del job SLURM. | ID |
 | `start_date` | Fecha y hora de inicio del job. | Fecha/hora |
 | `end_date` | Fecha y hora de finalización del job. | Fecha/hora |
 | `job_duration_hours` | Duración del job. | Horas |
 | `state` | Estado final del job. | Categórico |
+| `nodetypes` | Tipo de nodo usado por el job. | Categórico |
 | `numnodes` | Número de nodos utilizados por el job. | Cantidad |
 | `numcores` | Número de cores utilizados por el job. | Cantidad |
+| `slurm_nodes` | Lista de nodos asociados al job. | Categórico / lista |
 
 ---
 
@@ -210,7 +241,7 @@ En Windows:
 
 ```bash
 python -m venv .venv
-.venv\Scripts\activate
+.venv\\Scripts\\activate
 ```
 
 En Linux / macOS:
