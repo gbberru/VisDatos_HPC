@@ -318,16 +318,7 @@ http://localhost:8501
 
 ---
 
-## 11. Limitaciones del análisis
-
-- La energía y el CO₂ se calculan a partir de métricas disponibles y factores de estimación, por lo que deben interpretarse como valores aproximados.
-- La temperatura depende del tipo de sensor disponible y puede variar entre nodos CPU-only y GPU.
-- El análisis visual permite identificar patrones y posibles relaciones, pero no reemplaza una evaluación estadística formal de causalidad.
-- Algunos archivos fueron agregados o muestreados para mejorar el rendimiento del dashboard.
-
----
-
-## 12. Principales hallazgos esperados
+## 11. Principales hallazgos esperados
 
 El dashboard permite identificar:
 
@@ -339,7 +330,7 @@ El dashboard permite identificar:
 
 ---
 
-## 13. Herramientas utilizadas
+## 12. Herramientas utilizadas
 
 - Python
 - Pandas
@@ -352,13 +343,3 @@ El dashboard permite identificar:
 
 ---
 
-## 14. Estado del proyecto
-
-El proyecto cuenta con:
-
-- Dataset final generado y revisado.
-- Archivos procesados para visualización.
-- Dashboard interactivo funcional.
-- Repositorio organizado para reproducción.
-
-La siguiente etapa corresponde a la elaboración del documento técnico y la preparación de la presentación oral del proyecto.
